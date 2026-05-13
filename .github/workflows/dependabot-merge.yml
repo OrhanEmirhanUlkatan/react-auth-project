@@ -1,6 +1,5 @@
 name: Dependabot Auto-Merge
 
-# Hem yeni PR'larda tetiklenir hem de manuel çalıştırma butonu ekler
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -13,10 +12,12 @@ permissions:
 jobs:
   dependabot:
     runs-on: ubuntu-latest
-    # Manuel çalıştırıldığında veya PR'ı açan dependabot olduğunda çalışır
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      # Sadece PR tetiklemesinde meta verileri getirir
+      # BU ADIM EKLENDİ: Hatayı çözen ve Git deposunu kuran adım
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Dependabot metadata
         if: github.event_name != 'workflow_dispatch'
         id: metadata
@@ -24,12 +25,17 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      # AÇIK OLAN TÜM DEPENDABOT PR'LARINI BULUR VE MERGE EDER
       - name: Approve and Enable Auto-Merge
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manuel tetikleme: Tüm açık Dependabot PR'ları işleniyor..."
             PR_URLS=$(gh pr list --author "app/dependabot" --json url --jq '.[].url')
+            
+            if [ -z "$PR_URLS" ]; then
+              echo "Açık Dependabot PR'ı bulunamadı."
+              exit 0
+            fi
+
             for PR_URL in $PR_URLS; do
               echo "İşleniyor: $PR_URL"
               gh pr review --approve "$PR_URL"
