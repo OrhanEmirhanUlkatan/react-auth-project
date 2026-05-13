@@ -1,6 +1,10 @@
 name: Dependabot Auto-Merge
 
-on: pull_request
+# Hem yeni PR'larda tetiklenir hem de manuel çalıştırma butonu ekler
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: 
 
 permissions:
   pull-requests: write
@@ -9,26 +13,33 @@ permissions:
 jobs:
   dependabot:
     runs-on: ubuntu-latest
-    # Sadece Dependabot tarafından açılan PR'larda çalışmasını sağlar
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    # Manuel çalıştırıldığında veya PR'ı açan dependabot olduğunda çalışır
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      # 1. Adım: Dependabot PR bilgilerini getirir
+      # Sadece PR tetiklemesinde meta verileri getirir
       - name: Dependabot metadata
+        if: github.event_name != 'workflow_dispatch'
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      # 2. Adım: PR'ı otomatik olarak onaylar (Approve)
-      - name: Approve a PR
-        run: gh pr review --approve "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 3. Adım: PR için otomatik birleştirmeyi (Auto-Merge) tetikler
-      - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --merge "$PR_URL"
+      # AÇIK OLAN TÜM DEPENDABOT PR'LARINI BULUR VE MERGE EDER
+      - name: Approve and Enable Auto-Merge
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manuel tetikleme: Tüm açık Dependabot PR'ları işleniyor..."
+            PR_URLS=$(gh pr list --author "app/dependabot" --json url --jq '.[].url')
+            for PR_URL in $PR_URLS; do
+              echo "İşleniyor: $PR_URL"
+              gh pr review --approve "$PR_URL"
+              gh pr merge --auto --merge "$PR_URL"
+            done
+          else
+            echo "PR Tetiklemesi: Tekil PR işleniyor..."
+            gh pr review --approve "$PR_URL"
+            gh pr merge --auto --merge "$PR_URL"
+          fi
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
